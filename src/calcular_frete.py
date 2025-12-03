@@ -11,7 +11,6 @@ def calcular_peso_cubado_azul(comprimento_cm, largura_cm, altura_cm, fator_cubag
     return round(peso_cubado_kg, 2)
 
 
-# Constantes de negócio
 VALOR_FRETE_POR_KG_CHEIO = 3.00
 PERCENTUAL_DESCONTO_KG = 0.50  # 50% de desconto
 LIMITE_PESO_DESCONTO = 30.0  # kg
@@ -53,6 +52,7 @@ def calcular_frete(comprimento_cm, largura_cm, altura_cm, peso_real_kg):
 
 
 def formatar_resultado(resp):
+    """Formata o resultado do cálculo em string para exibição."""
     sep_eq = "=" * 55
     sep_dash = "-" * 55
     return (
@@ -70,87 +70,89 @@ def formatar_resultado(resp):
 
 
 def iniciar_interface():
-    try:
-        import tkinter as tk
-        from tkinter import messagebox
-    except Exception:
-        raise
+    """Cria e exibe a interface gráfica com Tkinter."""
+    import tkinter as tk
+    from tkinter import messagebox, ttk
 
+    # ===== Janela Principal =====
     root = tk.Tk()
     root.title("Calculadora de Frete - Azul Cargo Express")
+    root.geometry("900x500")
+    ttk.Style().theme_use('clam')
 
-    # Flag para indicar se o resultado já foi exibido (evita múltiplas execuções)
     root._result_shown = False
+    root.columnconfigure(0, weight=1)
+    root.rowconfigure(1, weight=1)
 
-    # Inputs
+    # ===== Container Principal =====
+    main_frame = tk.Frame(root, bg='#2b2b2b')
+    main_frame.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+    main_frame.columnconfigure(0, weight=1)
+    main_frame.columnconfigure(1, weight=2)
+    main_frame.rowconfigure(1, weight=1)
+
+    # ===== Painel de Entrada (Esquerda) =====
+    input_frame = tk.LabelFrame(main_frame, text="Entrada de Dados", font=("Arial", 10, "bold"), 
+                                 bg='#2b2b2b', fg='#f0f0f0', padx=10, pady=10)
+    input_frame.grid(row=0, column=0, rowspan=3, sticky="nsew", padx=(0, 10))
+    input_frame.columnconfigure(1, weight=1)
+    
     labels = ["Comprimento (cm)", "Largura (cm)", "Altura (cm)", "Peso real (kg)"]
     entries = {}
-
     for i, text in enumerate(labels):
-        lbl = tk.Label(root, text=text)
-        lbl.grid(row=i, column=0, padx=8, pady=6, sticky="w")
-        ent = tk.Entry(root, width=18)
-        ent.grid(row=i, column=1, padx=8, pady=6)
+        tk.Label(input_frame, text=text, bg='#2b2b2b', fg='#f0f0f0').grid(row=i, column=0, padx=5, pady=6, sticky="w")
+        ent = tk.Entry(input_frame, width=18, bg='#3a3a3a', fg='#f0f0f0', insertbackground='#f0f0f0')
+        ent.grid(row=i, column=1, padx=5, pady=6, sticky="ew")
         entries[text] = ent
-
-    # Define foco inicial no primeiro campo
     entries[labels[0]].focus_set()
 
-    # Resultado: usar um Text para exibir todo o conteúdo (como versão original)
-    result_text = tk.Text(root, width=60, height=12)
-    result_text.grid(row=0, column=2, rowspan=6, padx=8, pady=6, sticky="nsew")
+    # ===== Painel de Resultado (Direita) =====
+    result_frame = tk.LabelFrame(main_frame, text="Resultado", font=("Arial", 10, "bold"),
+                                  bg='#2b2b2b', fg='#f0f0f0', padx=10, pady=10)
+    result_frame.grid(row=0, column=1, rowspan=3, sticky="nsew")
+    result_frame.columnconfigure(0, weight=1)
+    result_frame.rowconfigure(0, weight=1)
+    
+    scrollbar = tk.Scrollbar(result_frame)
+    scrollbar.grid(row=0, column=1, sticky="ns")
+    result_text = tk.Text(result_frame, yscrollcommand=scrollbar.set, font=("Consolas", 9),
+                          bg='#1e1e1e', fg='#e6e6e6', insertbackground='#e6e6e6')
+    result_text.grid(row=0, column=0, sticky="nsew")
+    scrollbar.config(command=result_text.yview)
 
-    # Guarda o último texto exibido para evitar duplicação acidental
+    # ===== Variáveis de Controle =====
     last_output = ""
-    # Guard para agendamento (debounce) e texto pendente
     scheduled = False
     pending_text = None
 
     def on_calcular(event=None):
+        """Calcula o frete com valores dos campos."""
         try:
-            comprimento = float(entries[labels[0]].get())
-            largura = float(entries[labels[1]].get())
-            altura = float(entries[labels[2]].get())
-            peso_real = float(entries[labels[3]].get())
+            comp, larg, alt, peso = [float(entries[labels[i]].get()) for i in range(4)]
         except ValueError:
             messagebox.showerror("Entrada inválida", "Digite números válidos. Use ponto (.) como separador decimal.")
             return
-        nonlocal last_output
-        nonlocal scheduled, pending_text
-
-        resp = calcular_frete(comprimento, largura, altura, peso_real)
-        texto = formatar_resultado(resp)
-
-        # Se já mostramos resultado, não reapresenta
-        if texto == last_output or getattr(root, "_result_shown", False):
+        nonlocal last_output, scheduled, pending_text
+        
+        # Evita duplicação e debounce
+        texto = formatar_resultado(calcular_frete(comp, larg, alt, peso))
+        if texto == last_output or getattr(root, "_result_shown", False) or scheduled:
             return
-
-        # Se já agendado, ignora chamadas subsequentes (debounce)
-        if scheduled:
-            return
-
-        # Marca agendado e guarda texto pendente
+        
         scheduled = True
         pending_text = texto
-
-        # Agenda a inserção para o loop principal (evita reentrância múltipla)
         def do_insert():
             nonlocal scheduled, pending_text, last_output
-            # Desabilita o botão imediatamente para evitar reentrância adicional
             btn_calc.config(state="disabled")
             root._result_shown = True
-
-            # Insere o texto pendente na UI
             result_text.delete("1.0", tk.END)
             result_text.insert(tk.END, pending_text)
             last_output = pending_text
-
-            # limpa estado de agendamento (a flag _result_shown mantém bloqueio até Limpar)
             scheduled = False
-
         root.after(10, do_insert)
 
     def on_limpar():
+        """Limpa todos os campos e resultado."""
         for e in entries.values():
             e.delete(0, tk.END)
         result_text.delete("1.0", tk.END)
@@ -159,13 +161,24 @@ def iniciar_interface():
         root._result_shown = False
         btn_calc.config(state="normal")
 
-    btn_calc = tk.Button(root, text="Calcular", command=on_calcular, width=12)
-    btn_calc.grid(row=5, column=0, pady=6)
+    # ===== Painel de Botões =====
+    btn_frame = tk.Frame(main_frame, bg='#2b2b2b')
+    btn_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=15)
+    btn_frame.columnconfigure((0, 1, 2), weight=1)
 
-    btn_clear = tk.Button(root, text="Limpar", command=on_limpar, width=12)
-    btn_clear.grid(row=5, column=1, pady=6)
+    btn_style = {"width": 15, "font": ("Arial", 11, "bold"), "relief": tk.RAISED, "bd": 2, "cursor": "hand2"}
+    
+    btn_calc = tk.Button(btn_frame, text="Calcular", command=on_calcular, bg='#00aa00', fg='#ffffff',
+                         activebackground='#00dd00', activeforeground='#ffffff', **btn_style)
+    btn_calc.grid(row=0, column=0, padx=8)
 
-    # Permitir que a tecla Enter (Return) dispare o cálculo — inclusive em campos Entry
+    tk.Button(btn_frame, text="Limpar", command=on_limpar, bg='#ff6600', fg='#ffffff',
+              activebackground='#ff8844', activeforeground='#ffffff', **btn_style).grid(row=0, column=1, padx=8)
+    
+    tk.Button(btn_frame, text="Exportar", bg='#0066cc', fg='#ffffff',
+              activebackground='#0088ff', activeforeground='#ffffff', **btn_style).grid(row=0, column=2, padx=8)
+
+    # Permite Enter para calcular
     root.bind('<Return>', on_calcular)
     root.bind('<KP_Enter>', on_calcular)
 
@@ -173,7 +186,6 @@ def iniciar_interface():
 
 
 if __name__ == "__main__":
-    # Abre a interface gráfica
     iniciar_interface()
 
 
